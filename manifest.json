@@ -1,0 +1,16 @@
+{
+  "name": "ARISE SYSTEM",
+  "short_name": "ARISE",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#020208",
+  "theme_color": "#00d4ff",
+  "description": "Solo Leveling ARISE System v4.3 - Ad-Free",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f537.png",
+      "sizes": "72x72",
+      "type": "image/png"
+    }
+  ]
+}
