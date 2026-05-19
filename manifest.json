@@ -1,16 +1,17 @@
 {
-  "name": "ARISE SYSTEM",
+  "name": "ARISE",
   "short_name": "ARISE",
+  "description": "Solo Leveling Habit Tracker",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#020208",
-  "theme_color": "#00d4ff",
-  "description": "Solo Leveling ARISE System v4.3 - Ad-Free",
+  "background_color": "#0a0a0f",
+  "theme_color": "#6d28d9",
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f537.png",
-      "sizes": "72x72",
-      "type": "image/png"
+      "src": "https://i.ibb.co/7yL3XqJ/arise-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
