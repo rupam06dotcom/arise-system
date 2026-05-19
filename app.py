@@ -53,13 +53,7 @@ BG = "/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIbGNtcwIQAABtbnRyUk
 
 st.markdown(f'''
 # --- PWA Support ---
-st.markdown("""
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#6d28d9">
-<script>
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js')}
-</script>
-""", unsafe_allow_html=True)<style>
+st.markdown('<link rel="manifest" href="manifest.json">', unsafe_allow_html=True)<style>
 @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
 
 .stApp {{
