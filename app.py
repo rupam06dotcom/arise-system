@@ -1,345 +1,142 @@
-import os
-import binascii
-import hashlib
-from datetime import date
-
 import streamlit as st
-import psycopg2
-import psycopg2.extras
+from supabase import create_client, Client
+from datetime import datetime
+import time
 
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="ARISE SYSTEM", page_icon="⚔️", layout="centered")
 
-st.set_page_config(page_title="ARISE", page_icon="⚔️", layout="wide")
+# --- SUPABASE ---
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_ANON_KEY"]
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# --- STYLES (Solo Leveling theme) ---
+st.markdown("""
+<style>
+   .main { background: #0a0a0f; color: #e0e0ff; }
+   .stButton>button { background: linear-gradient(90deg,#6a00ff,#00d4ff); color:white; border:none; border-radius:8px; font-weight:bold; }
+    h1, h2, h3 { color:#a855f7; text-shadow:0 0 10px #6a00ff; }
+</style>
+""", unsafe_allow_html=True)
 
-# ---------- DB ----------
-def get_conn():
-    return psycopg2.connect(st.secrets["DATABASE_URL"], sslmode="require")
+# --- AUTH POPUP ---
+@st.dialog("SYSTEM GATE", width="large")
+def login_gate():
+    st.markdown("<h2 style='text-align:center'>⚔️ ARISE ⚔️</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center'>Only the chosen Hunter may enter</p>", unsafe_allow_html=True)
 
+    login_tab, signup_tab = st.tabs(["LOGIN", "AWAKEN"])
 
-def fetch_one(query, params=None):
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute(query, params or ())
-            return cur.fetchone()
-
-
-def fetch_all(query, params=None):
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute(query, params or ())
-            return cur.fetchall()
-
-
-def execute(query, params=None):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params or ())
-        conn.commit()
-
-
-# ---------- Auth ----------
-def hash_pw(password, salt=None):
-    salt = salt or binascii.hexlify(os.urandom(16)).decode()
-    pwdhash = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt.encode("utf-8"),
-        100000,
-    )
-    return salt, binascii.hexlify(pwdhash).decode()
-
-
-def verify_pw(password, salt, pwdhash):
-    _, new_hash = hash_pw(password, salt)
-    return new_hash == pwdhash
-
-
-def signup(email, password, name):
-    email = email.strip().lower()
-    name = name.strip()
-
-    if not email or not password or not name:
-        return None
-
-    salt, pwdhash = hash_pw(password)
-
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+    with login_tab:
+        email = st.text_input("Email", placeholder="hunter@email.com")
+        pw = st.text_input("Password", type="password")
+        if st.button("ENTER", use_container_width=True):
             try:
-                cur.execute(
-                    """
-                    INSERT INTO users (email, password_salt, password_hash)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (email) DO NOTHING
-                    RETURNING id
-                    """,
-                    (email, salt, pwdhash),
-                )
-                user = cur.fetchone()
-                if not user:
-                    conn.rollback()
-                    return None
-
-                uid = user["id"]
-                cur.execute(
-                    "INSERT INTO profiles (user_id, name) VALUES (%s, %s)",
-                    (uid, name),
-                )
-                conn.commit()
-                return uid
-            except Exception:
-                conn.rollback()
-                raise
-
-
-def login(email, password):
-    email = email.strip().lower()
-    user = fetch_one(
-        """
-        SELECT id, password_salt, password_hash
-        FROM users
-        WHERE email=%s AND is_active=TRUE
-        """,
-        (email,),
-    )
-    if user and verify_pw(password, user["password_salt"], user["password_hash"]):
-        execute("UPDATE users SET last_login=NOW() WHERE id=%s", (user["id"],))
-        return user["id"]
-    return None
-
-
-# ---------- Helpers ----------
-def get_profile(uid):
-    return fetch_one("SELECT * FROM profiles WHERE user_id=%s", (uid,))
-
-
-def add_xp(uid, amount):
-    prof = get_profile(uid)
-    if not prof:
-        return
-
-    new_xp = int(prof["xp"]) + int(amount)
-    new_level = int(prof["level"])
-
-    while new_xp >= new_level * 100:
-        new_xp -= new_level * 100
-        new_level += 1
-
-    execute(
-        "UPDATE profiles SET xp=%s, level=%s, updated_at=NOW() WHERE user_id=%s",
-        (new_xp, new_level, uid),
-    )
-
-
-def xp_progress(prof):
-    return f"{prof['xp']}/{prof['level'] * 100}"
-
-
-# ---------- Session ----------
-if "uid" not in st.session_state:
-    st.session_state.uid = None
-
-
-# ---------- Auth UI ----------
-if not st.session_state.uid:
-    st.title("⚔️ ARISE - Solo Leveling System")
-    tab1, tab2 = st.tabs(["Login", "Sign Up"])
-
-    with tab1:
-        email = st.text_input("Email", key="login_email")
-        pw = st.text_input("Password", type="password", key="login_pw")
-        if st.button("Login"):
-            uid = login(email, pw)
-            if uid:
-                st.session_state.uid = uid
+                res = supabase.auth.sign_in_with_password({"email": email, "password": pw})
+                st.session_state.user = res.user
+                st.session_state.email = email
                 st.rerun()
-            else:
-                st.error("Invalid credentials")
+            except:
+                st.error("Access Denied")
 
-    with tab2:
-        email = st.text_input("New Email", key="signup_email")
-        name = st.text_input("Hunter Name", key="signup_name")
-        pw = st.text_input("New Password", type="password", key="signup_pw")
-        if st.button("Create Account"):
+    with signup_tab:
+        email = st.text_input("Email", key="s_email")
+        pw = st.text_input("Password", type="password", key="s_pw")
+        name = st.text_input("Hunter Name", placeholder="RUPAM")
+        if st.button("AWAKEN NOW", use_container_width=True):
             try:
-                uid = signup(email, pw, name)
-                if uid:
-                    st.success("Account created. Login now.")
-                else:
-                    st.error("Email already exists or fields are empty")
+                supabase.auth.sign_up({"email": email, "password": pw})
+                # create hunter
+                supabase.table("hunters").insert({
+                    "email": email,
+                    "hunter_name": name.upper(),
+                    "level": 1, "xp": 0, "hp": 100, "max_hp": 100,
+                    "mp": 50, "max_mp": 50, "strength": 10,
+                    "agility": 10, "intelligence": 10, "gold": 100,
+                    "rank": "E", "title": "The Weakest Hunter"
+                }).execute()
+                st.success("Awakening Successful! Go to LOGIN tab.")
             except Exception as e:
-                st.error(f"Signup failed: {e}")
+                st.error(f"Failed: {e}")
 
+# --- CHECK AUTH ---
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if not st.session_state.user:
+    login_gate()
     st.stop()
 
-
-# ---------- Main App ----------
-uid = st.session_state.uid
-prof = get_profile(uid)
-
-if not prof:
-    st.error("Profile not found.")
+# --- LOAD HUNTER ---
+email = st.session_state.email
+hunter_res = supabase.table("hunters").select("*").eq("email", email).execute()
+if not hunter_res.data:
+    st.error("Hunter data not found. Contact admin.")
     st.stop()
 
-st.sidebar.title(prof["title"])
-st.sidebar.metric("Level", prof["level"])
-st.sidebar.metric("XP", xp_progress(prof))
-st.sidebar.metric("Rank", prof["rank"])
-st.sidebar.metric("Gold", prof["gold"])
+hunter = hunter_res.data[0]
 
-if st.sidebar.button("Logout"):
-    st.session_state.uid = None
-    st.rerun()
-
-st.header(f"Welcome back, {prof['name']}!")
+# --- HEADER ---
+st.markdown(f"<h1>ARISE SYSTEM</h1>", unsafe_allow_html=True)
+st.markdown(f"### Hunter: {hunter['hunter_name']} | Rank: {hunter['rank']}")
 
 col1, col2, col3 = st.columns(3)
-col1.metric("HP", f"{prof['hp']}/{prof['max_hp']}")
-col2.metric("MP", f"{prof['mp']}/{prof['max_mp']}")
-col3.metric("Streak", prof["streak"])
+col1.metric("LEVEL", hunter['level'])
+col2.metric("XP", f"{hunter['xp']}/100")
+col3.metric("GOLD", hunter['gold'])
 
-today = date.today()
+# --- TABS ---
+tab1, tab2, tab3 = st.tabs(["📊 STATUS", "📜 QUESTS", "👥 SHADOW ARMY"])
 
-# ---------- Daily Quests ----------
-st.subheader("Daily Quests")
+with tab1:
+    st.subheader("STATS")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("HP", f"{hunter['hp']}/{hunter['max_hp']}")
+    c2.metric("MP", f"{hunter['mp']}/{hunter['max_mp']}")
+    c3.metric("TITLE", hunter['title'])
 
-quests = fetch_all(
-    """
-    SELECT *
-    FROM quests
-    WHERE user_id=%s AND quest_date=%s
-    ORDER BY id
-    """,
-    (uid, today),
-)
+    st.progress(hunter['xp'] % 100 / 100)
 
-for qst in quests:
-    done = qst["status"] == "completed"
-    checked = st.checkbox(
-        f"{qst['title']} (+{qst['xp']} XP)",
-        value=done,
-        key=f"q_{qst['id']}",
-        disabled=done,
-    )
+    st.subheader("Attributes")
+    st.write(f"**STR:** {hunter['strength']} | **AGI:** {hunter['agility']} | **INT:** {hunter['intelligence']}")
 
-    if checked and not done:
-        execute(
-            """
-            UPDATE quests
-            SET status='completed', completed_at=NOW(), updated_at=NOW()
-            WHERE id=%s
-            """,
-            (qst["id"],),
-        )
-        add_xp(uid, qst["xp"])
-        execute(
-            "INSERT INTO logs (user_id, d, action, value) VALUES (%s, %s, %s, %s)",
-            (uid, today, "quest_complete", qst["xp"]),
-        )
+    if st.button("Logout"):
+        supabase.auth.sign_out()
+        st.session_state.clear()
         st.rerun()
 
-if st.button("Generate Today's Quests"):
-    existing = fetch_one(
-        "SELECT 1 FROM quests WHERE user_id=%s AND quest_date=%s LIMIT 1",
-        (uid, today),
-    )
-    if not existing:
-        defaults = [
-            ("Push-ups 30", 20),
-            ("Read 10 pages", 15),
-            ("Meditate 5 min", 10),
-        ]
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                for title, xp in defaults:
-                    cur.execute(
-                        """
-                        INSERT INTO quests (user_id, quest_date, title, xp, status)
-                        VALUES (%s, %s, %s, %s, 'active')
-                        """,
-                        (uid, today, title, xp),
-                    )
-            conn.commit()
+with tab2:
+    st.subheader("Daily Quest")
+    if st.button("Complete Daily Training (+50 XP)", use_container_width=True):
+        new_xp = hunter['xp'] + 50
+        new_level = hunter['level']
+        if new_xp >= 100:
+            new_level += 1
+            new_xp -= 100
+            st.balloons()
+            st.success(f"LEVEL UP! You are now Level {new_level}")
+
+        supabase.table("hunters").update({
+            "xp": new_xp, "level": new_level, "gold": hunter['gold'] + 20
+        }).eq("email", email).execute()
+
+        # log quest
+        supabase.table("quests").insert({
+            "hunter_id": hunter['id'],
+            "title": "Daily Training",
+            "xp_reward": 50,
+            "completed": True
+        }).execute()
+
+        time.sleep(1)
         st.rerun()
+
+with tab3:
+    st.subheader("Shadow Army")
+    shadows = supabase.table("shadow_army").select("*").eq("hunter_id", hunter['id']).execute()
+    if shadows.data:
+        for s in shadows.data:
+            st.write(f"• {s['shadow_name']} - Rank {s['shadow_rank']}")
     else:
-        st.info("Today's quests already exist.")
-
-# ---------- Workout ----------
-st.subheader("Workout Session")
-
-mode = st.selectbox("Mode", ["Strength", "Cardio", "Mixed"])
-
-if st.button("Start 25-min Session"):
-    execute(
-        """
-        INSERT INTO workout_sessions
-        (user_id, session_date, title, mode, start_time, status)
-        VALUES (%s, %s, %s, %s, NOW(), 'active')
-        """,
-        (uid, today, f"{mode} Training", mode),
-    )
-    st.success("Session started!")
-
-active = fetch_one(
-    """
-    SELECT *
-    FROM workout_sessions
-    WHERE user_id=%s AND status='active'
-    ORDER BY start_time DESC
-    LIMIT 1
-    """,
-    (uid,),
-)
-
-if active:
-    if st.button("Complete Session"):
-        elapsed = 25
-        xp_reward = 30
-
-        execute(
-            """
-            UPDATE workout_sessions
-            SET end_time=NOW(),
-                elapsed_minutes=%s,
-                xp_reward=%s,
-                status='completed',
-                updated_at=NOW()
-            WHERE id=%s
-            """,
-            (elapsed, xp_reward, active["id"]),
-        )
-
-        add_xp(uid, xp_reward)
-        execute(
-            "UPDATE profiles SET gold=gold+%s, updated_at=NOW() WHERE user_id=%s",
-            (10, uid),
-        )
-        execute(
-            "INSERT INTO logs (user_id, d, action, value) VALUES (%s, %s, %s, %s)",
-            (uid, today, "workout_complete", xp_reward),
-        )
-
-        st.success(f"+{xp_reward} XP, +10 Gold!")
-        st.rerun()
-
-# ---------- Inventory ----------
-st.subheader("Inventory")
-
-items = fetch_all(
-    """
-    SELECT item, rarity, obtained_at
-    FROM inventory
-    WHERE user_id=%s
-    ORDER BY obtained_at DESC
-    LIMIT 10
-    """,
-    (uid,),
-)
-
-if items:
-    for it in items:
-        st.write(f"• {it['item']} — *{it['rarity']}*")
-else:
-    st.caption("No items yet.")
-
-st.caption("Data is stored in PostgreSQL.")
+        st.info("No shadows yet. Arise a defeated enemy to add them.")
