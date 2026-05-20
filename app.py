@@ -1,11 +1,10 @@
 import streamlit as st
 import sqlite3, hashlib, datetime
 
-st.set_page_config(page_title="ARISE", page_icon="âš”ï¸", layout="centered")
+st.set_page_config(page_title="ARISE", page_icon="⚔️", layout="centered")
 
-# --- PWA ---
-st.markdown('<link rel="manifest" href="manifest.json">', unsafe_allow_html=True)
-
+st.markdown('<link rel="manifest" href="https://raw.githubusercontent.com/rupam06dotcom/arise-system/main/manifest.json">', unsafe_allow_html=True)
+st.markdown('<link rel="icon" href="https://i.ibb.co/7yL3XqJ/arise-icon-512.png">', unsafe_allow_html=True)
 DB = "arise.db"
 def init_db():
     conn = sqlite3.connect(DB)
